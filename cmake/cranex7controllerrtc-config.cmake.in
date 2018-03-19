@@ -1,0 +1,54 @@
+# CraneX7ControllerRTC CMake config file
+#
+# This file sets the following variables:
+# CraneX7ControllerRTC_FOUND - Always TRUE.
+# CraneX7ControllerRTC_INCLUDE_DIRS - Directories containing the CraneX7ControllerRTC include files.
+# CraneX7ControllerRTC_IDL_DIRS - Directories containing the CraneX7ControllerRTC IDL files.
+# CraneX7ControllerRTC_LIBRARIES - Libraries needed to use CraneX7ControllerRTC.
+# CraneX7ControllerRTC_DEFINITIONS - Compiler flags for CraneX7ControllerRTC.
+# CraneX7ControllerRTC_VERSION - The version of CraneX7ControllerRTC found.
+# CraneX7ControllerRTC_VERSION_MAJOR - The major version of CraneX7ControllerRTC found.
+# CraneX7ControllerRTC_VERSION_MINOR - The minor version of CraneX7ControllerRTC found.
+# CraneX7ControllerRTC_VERSION_REVISION - The revision version of CraneX7ControllerRTC found.
+# CraneX7ControllerRTC_VERSION_CANDIDATE - The candidate version of CraneX7ControllerRTC found.
+
+message(STATUS "Found CraneX7ControllerRTC-@PROJECT_VERSION@")
+set(CraneX7ControllerRTC_FOUND TRUE)
+
+find_package(<dependency> REQUIRED)
+
+#set(CraneX7ControllerRTC_INCLUDE_DIRS
+#    "@CMAKE_INSTALL_PREFIX@/include/@PROJECT_NAME_LOWER@-@PROJECT_VERSION_MAJOR@"
+#    ${<dependency>_INCLUDE_DIRS}
+#    )
+#
+#set(CraneX7ControllerRTC_IDL_DIRS
+#    "@CMAKE_INSTALL_PREFIX@/include/@PROJECT_NAME_LOWER@-@PROJECT_VERSION_MAJOR@/idl")
+set(CraneX7ControllerRTC_INCLUDE_DIRS
+    "@CMAKE_INSTALL_PREFIX@/include/@CPACK_PACKAGE_FILE_NAME@"
+    ${<dependency>_INCLUDE_DIRS}
+    )
+set(CraneX7ControllerRTC_IDL_DIRS
+    "@CMAKE_INSTALL_PREFIX@/include/@CPACK_PACKAGE_FILE_NAME@/idl")
+
+
+if(WIN32)
+    set(CraneX7ControllerRTC_LIBRARIES
+        "@CMAKE_INSTALL_PREFIX@/@LIB_INSTALL_DIR@/@CMAKE_SHARED_LIBRARY_PREFIX@@PROJECT_NAME_LOWER@@CMAKE_STATIC_LIBRARY_SUFFIX@"
+        ${<dependency>_LIBRARIES}
+        )
+else(WIN32)
+    set(CraneX7ControllerRTC_LIBRARIES
+        "@CMAKE_INSTALL_PREFIX@/@LIB_INSTALL_DIR@/@CMAKE_SHARED_LIBRARY_PREFIX@@PROJECT_NAME_LOWER@@CMAKE_SHARED_LIBRARY_SUFFIX@"
+        ${<dependency>_LIBRARIES}
+        )
+endif(WIN32)
+
+set(CraneX7ControllerRTC_DEFINITIONS ${<dependency>_DEFINITIONS})
+
+set(CraneX7ControllerRTC_VERSION @PROJECT_VERSION@)
+set(CraneX7ControllerRTC_VERSION_MAJOR @PROJECT_VERSION_MAJOR@)
+set(CraneX7ControllerRTC_VERSION_MINOR @PROJECT_VERSION_MINOR@)
+set(CraneX7ControllerRTC_VERSION_REVISION @PROJECT_VERSION_REVISION@)
+set(CraneX7ControllerRTC_VERSION_CANDIDATE @PROJECT_VERSION_CANDIDATE@)
+
