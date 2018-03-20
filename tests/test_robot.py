@@ -18,11 +18,14 @@ class TestRobot(unittest.TestCase):
 
     def setUp(self):
         self._r = robot()
-        self._r.open()
+        if not self._r.open():
+            self._r = None
 
     def tearDown(self):
-        self._r.close()
-        del self._r
+        if self._r:
+            self._r.close()
+            del self._r
+            self._r = None
 
     def test_home(self):
         self.assertTrue(self._r.home(sync=True))
@@ -35,7 +38,7 @@ class TestRobot(unittest.TestCase):
     def test_moving(self):
         moving = self._r.moving()
         self.assertFalse(moving)
-        print("joints: " + str(moving))
+        print("moving: " + str(moving))
 
     def test_cur(self):
         cur = self._r.cur()
@@ -45,7 +48,7 @@ class TestRobot(unittest.TestCase):
     def test_vel(self):
         vel = self._r.vel()
         self.assertIsNotNone(vel)
-        print("current: " + str(vel))
+        print("velocity: " + str(vel))
 
     def test_movej(self):
         ret = self._r.movej([-58.2, 4.5, 4.5, -118.5, -4.3, -21.8, -74.6], sync=True)

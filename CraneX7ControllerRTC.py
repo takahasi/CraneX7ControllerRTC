@@ -29,6 +29,7 @@ from ManipulatorCommonInterface_Middle_idl_example import *
 # <rtc-template block="consumer_import">
 # </rtc-template>
 
+from CraneX7Controller import CraneX7 as robot
 
 # This module's spesification
 # <rtc-template block="module_spec">
@@ -42,6 +43,9 @@ cranex7controllerrtc_spec = ["implementation_id", "CraneX7ControllerRTC",
                              "max_instance",      "1",
                              "language",          "Python",
                              "lang_type",         "SCRIPT",
+                             "conf.default.device", "/dev/ttyUSB0",
+                             "conf.__widget__.device", "text",
+                             "conf.__type__.device", "string",
                              ""]
 # </rtc-template>
 
@@ -93,6 +97,11 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
 
         # initialize of configuration-data.
         # <rtc-template block="init_conf_param">
+        """
+        - Name:  device
+        - DefaultValue: /dev/ttyUSB0
+        """
+        self._device = ['/dev/ttyUSB0']
 
         # </rtc-template>
 
@@ -106,6 +115,7 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
     #
     def onInitialize(self):
         # Bind variables and configuration variable
+        self.bindParameter("device", self._device, "/dev/ttyUSB0")
 
         # Set InPort buffers
         self.addInPort("joints", self._jointsIn)
@@ -128,6 +138,10 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
 
         # Set CORBA Service Ports
         self.addPort(self._sv_namePort)
+
+        instance = OpenRTM_aist.Manager.instance()
+        self._log = instance.getLogbuf("CraneX7Controller")
+        self._robot = None
 
         return RTC.RTC_OK
 
@@ -182,6 +196,14 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
     #
     #
     def onActivated(self, ec_id):
+        self._robot = robot(device=self._device[0])
+        if not self._robot.open():
+            self._log.RTC_ERROR("cannot open robot communication: " + self._device[0])
+            self._robot = None
+            return RTC.RTC_ERROR
+
+        self._middle.set_robot(self._robot)
+        self._common.set_robot(self._robot)
 
         return RTC.RTC_OK
 
@@ -196,6 +218,18 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
     #
     #
     def onDeactivated(self, ec_id):
+        if not self._robot:
+            return RTC.RTC_OK
+
+        if not self._robot.close():
+            self._log.RTC_ERROR("cannot close robot communication")
+            return RTC.RTC_ERROR
+
+        self._middle.unset_robot()
+        self._common.unset_robot()
+
+        del self._robot
+        self._robot = None
 
         return RTC.RTC_OK
 
@@ -210,6 +244,53 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
     #
     #
     def onExecute(self, ec_id):
+        if not self._robot:
+            return RTC.RTC_OK
+
+        # move by joints
+        if self._jointsIn.isNew():
+            joints = self._jointsIn.read().data
+            if len(joints) == 7:
+                self._log.RTC_INFO("move; " + str(joints))
+                self._robot.movej(joints)
+            else:
+                self._log.RTC_ERROR("invalid joints parameters: " + str(joints))
+
+        # control gripper
+        if self._gripIn.isNew():
+            grip = self._gripIn.read().data
+            if grip == 0:
+                self._log.RTC_INFO("close_gripper")
+                self._robot.close_gripper()
+            elif grip == 1:
+                self._log.RTC_INFO("open_gripper")
+                self._robot.open_gripper()
+            else:
+                self._log.RTC_ERROR("invalid gripper control: " + str(grip))
+
+        # output moving information
+        is_moving = self._robot.moving
+        self._log.RTC_DEBUG("is_moving: " + str(is_moving))
+        self._d_is_moving.data = is_moving
+        self._is_movingOut.write()
+
+        # output joints information
+        joints = self._robot.pos
+        self._log.RTC_DEBUG("out_joints: " + str(joints))
+        self._d_out_joints.data = joints
+        self._out_jointsOut.write()
+
+        # output current information
+        current = self._robot.cur
+        self._log.RTC_DEBUG("out_current: " + str(current))
+        self._d_out_current.data = current
+        self._out_currentOut.write()
+
+        # output velocity information
+        velocity = self._robot.vel
+        self._log.RTC_DEBUG("out_velocity: " + str(velocity))
+        self._d_out_velocity.data = velocity
+        self._out_velocityOut.write()
 
         return RTC.RTC_OK
 
