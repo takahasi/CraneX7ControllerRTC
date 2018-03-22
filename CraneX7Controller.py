@@ -24,6 +24,7 @@ class CraneX7Joint(object):
     ADDR_PRESENT_CURRENT = 126
     ADDR_PRESENT_VELOCITY = 128
     ADDR_PRESENT_POSITION = 132
+    ADDR_PRESENT_TEMPERATURE = 146
 
     # Communication definitions
     PROTOCOL_VERSION = 2
@@ -109,13 +110,13 @@ class CraneX7Joint(object):
             self.pgain = 200
             self.igain = 20
             self.prof_acc = 10
-            self.prof_vel = 30
+            self.prof_vel = 20
         else:
             # joint settings
             self.pgain = 100
             self.igain = 20
             self.prof_acc = 10
-            self.prof_vel = 30
+            self.prof_vel = 20
 
     def torque_off(self):
         # Disable Dynamixel Torque
@@ -207,9 +208,16 @@ class CraneX7Joint(object):
     @property
     def cur(self):
         # Read present current
-        self._cur = self._read_dxl(4, self.ADDR_PRESENT_CURRENT)
+        self._cur = self._read_dxl(2, self.ADDR_PRESENT_CURRENT)
         self._get_dxl_result()
         return self._cur
+
+    @property
+    def tmp(self):
+        # Read present temperature
+        self._tmp = self._read_dxl(1, self.ADDR_PRESENT_TEMPERATURE)
+        self._get_dxl_result()
+        return self._tmp
 
     @property
     def moving(self):
@@ -339,10 +347,10 @@ class CraneX7(object):
             logging.error("move home: not yet initialized")
             return False
         # home position as 0
-        pos = [0, 0, 0, 0, 0, 0, 0]
+        pos = [0 for x in range(7)]
         with self._lock:
             for i, j in enumerate(self.j):
-                if not j.move(pos):
+                if not j.move(pos[i]):
                     logging.error("move j[" + str(i) + "]: cannot move")
                     return False
             if sync:
@@ -417,6 +425,15 @@ class CraneX7(object):
         for j in self.j:
             self._cur.append(j.cur)
         return self._cur
+
+    @property
+    def tmp(self):
+        if not self.j:
+            return None
+        self._tmp = list()
+        for j in self.j:
+            self._tmp.append(j.tmp)
+        return self._tmp
 
     @property
     def moving(self):
