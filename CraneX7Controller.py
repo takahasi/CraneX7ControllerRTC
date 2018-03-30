@@ -191,7 +191,7 @@ class CraneX7Joint(object):
     def prof_vel(self, vel):
         # Write velocity profile
         # 0-44 (unit=0.229[RPM])
-        self._write_dxl(self.PROFILE_ACCELERATION, vel)
+        self._write_dxl(self.PROFILE_VELOCITY, vel)
 
     @property
     def pos(self):
