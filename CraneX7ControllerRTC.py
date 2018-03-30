@@ -90,9 +90,10 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
         self._d_status = RTC.TimedOctet(RTC.Time(0, 0), 0)
         self._statusOut = OpenRTM_aist.OutPort("status", self._d_status)
 
-        self._sv_namePort = OpenRTM_aist.CorbaPort("sv_name")
-
+        self._commonPort = OpenRTM_aist.CorbaPort("common")
         self._common = ManipulatorCommonInterface_Common_i()
+
+        self._middlePort = OpenRTM_aist.CorbaPort("middle")
         self._middle = ManipulatorCommonInterface_Middle_i()
 
         # initialize of configuration-data.
@@ -129,15 +130,16 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
         self.addOutPort("status", self._statusOut)
 
         # Set service provider to Ports
-        self._sv_namePort.registerProvider(
+        self._commonPort.registerProvider(
             "common", "JARA_ARM::ManipulatorCommonInterface_Common", self._common)
-        self._sv_namePort.registerProvider(
+        self._middlePort.registerProvider(
             "middle", "JARA_ARM::ManipulatorCommonInterface_Middle", self._middle)
 
         # Set service consumers to Ports
 
         # Set CORBA Service Ports
-        self.addPort(self._sv_namePort)
+        self.addPort(self._commonPort)
+        self.addPort(self._middlePort)
 
         instance = OpenRTM_aist.Manager.instance()
         self._log = instance.getLogbuf("CraneX7Controller")
@@ -221,9 +223,10 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
         if not self._robot:
             return RTC.RTC_OK
 
-        if not self._robot.close():
-            self._log.RTC_ERROR("cannot close robot communication")
-            return RTC.RTC_ERROR
+        if self._robot.is_opened:
+            if not self._robot.close():
+                self._log.RTC_ERROR("cannot close robot communication")
+                return RTC.RTC_ERROR
 
         self._middle.unset_robot()
         self._common.unset_robot()
@@ -245,6 +248,9 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
     #
     def onExecute(self, ec_id):
         if not self._robot:
+            return RTC.RTC_OK
+
+        if not self._robot.is_opened:
             return RTC.RTC_OK
 
         # move by joints

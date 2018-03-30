@@ -3,6 +3,7 @@
 
 import unittest
 import sys
+import time
 sys.path.append(".")
 sys.path.append("..")
 
@@ -24,10 +25,12 @@ class TestRobot(unittest.TestCase):
         self._r = robot()
         if not self._r.open():
             self._r = None
+        time.sleep(1.5)
 
     def tearDown(self):
         if self._r:
             self._r.close()
+            time.sleep(1.5)
             del self._r
             self._r = None
 
@@ -65,6 +68,11 @@ class TestRobot(unittest.TestCase):
         tmp = self._r.tmp
         self.assertTrue(len(tmp) == 7)
         print("temperature: " + str(tmp))
+
+    def test_err(self):
+        err = self._r.err
+        self.assertIsNotNone(err)
+        print("error: " + str(err))
 
     def test_pickplace(self):
         ret = self._r.movej(self.up_pos, sync=True)

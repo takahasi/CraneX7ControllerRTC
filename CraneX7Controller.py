@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import time
 import threading
+import trollius as asyncio
 import dynamixel_functions as dxl
 
 __author__ = "Saburo Takahashi"
@@ -10,21 +12,28 @@ __copyright__ = "Copyright 2017, Saburo Takahashi"
 __license__ = "MIT License"
 
 
+class ControlTable():
+    def __init__(self, address, byte):
+        self.address = address
+        self.byte = byte
+
+
 class CraneX7Joint(object):
     # Control table address (Dynamixel-MX430/540)
-    ADDR_MAX_POSITION_LIMIT = 48
-    ADDR_MIN_POSITION_LIMIT = 52
-    ADDR_TORQUE_ENABLE = 64
-    ADDR_POSITION_IGAIN = 82
-    ADDR_POSITION_PGAIN = 84
-    ADDR_PROFILE_ACCELERATION = 108
-    ADDR_PROFILE_VELOCITY = 112
-    ADDR_GOAL_POSITION = 116
-    ADDR_MOVING = 122
-    ADDR_PRESENT_CURRENT = 126
-    ADDR_PRESENT_VELOCITY = 128
-    ADDR_PRESENT_POSITION = 132
-    ADDR_PRESENT_TEMPERATURE = 146
+    MAX_POSITION_LIMIT = ControlTable(48, 4)
+    MIN_POSITION_LIMIT = ControlTable(52, 4)
+    TORQUE_ENABLE = ControlTable(64, 1)
+    HARDWARE_ERROR_STATUS = ControlTable(70, 1)
+    POSITION_IGAIN = ControlTable(82, 2)
+    POSITION_PGAIN = ControlTable(84, 2)
+    PROFILE_ACCELERATION = ControlTable(108, 4)
+    PROFILE_VELOCITY = ControlTable(112, 4)
+    GOAL_POSITION = ControlTable(116, 4)
+    MOVING = ControlTable(122, 1)
+    PRESENT_CURRENT = ControlTable(126, 2)
+    PRESENT_VELOCITY = ControlTable(128, 4)
+    PRESENT_POSITION = ControlTable(132, 4)
+    PRESENT_TEMPERATURE = ControlTable(146, 1)
 
     # Communication definitions
     PROTOCOL_VERSION = 2
@@ -39,6 +48,8 @@ class CraneX7Joint(object):
         self._pos = 0
         self._cur = 0
         self._vel = 0
+        self._tmp = 0
+        self._err = 0
 
     def _get_dxl_result(self):
         COMM_SUCCESS = 0
@@ -55,51 +66,49 @@ class CraneX7Joint(object):
         else:
             return True
 
-    def _read_dxl(self, byte, address):
-        if byte == 4:
+    def _read_dxl(self, control_table):
+        if control_table.byte == 4:
             val = dxl.read4ByteTxRx(self.port,
                                     self.PROTOCOL_VERSION,
                                     self.id,
-                                    address)
-        elif byte == 2:
+                                    control_table.address)
+        elif control_table.byte == 2:
             val = dxl.read2ByteTxRx(self.port,
                                     self.PROTOCOL_VERSION,
                                     self.id,
-                                    address)
+                                    control_table.address)
         else:
             val = dxl.read1ByteTxRx(self.port,
                                     self.PROTOCOL_VERSION,
                                     self.id,
-                                    address)
+                                    control_table.address)
         self._get_dxl_result()
         return val
 
-    def _write_dxl(self, byte, address, value):
-        if byte == 4:
+    def _write_dxl(self, control_table, value):
+        if control_table.byte == 4:
             dxl.write4ByteTxRx(self.port,
                                self.PROTOCOL_VERSION,
                                self.id,
-                               address,
+                               control_table.address,
                                value)
-        elif byte == 2:
+        elif control_table.byte == 2:
             dxl.write2ByteTxRx(self.port,
                                self.PROTOCOL_VERSION,
                                self.id,
-                               address,
+                               control_table.address,
                                value)
         else:
             dxl.write1ByteTxRx(self.port,
                                self.PROTOCOL_VERSION,
                                self.id,
-                               address,
+                               control_table.address,
                                value)
         return self._get_dxl_result()
 
     def _torque(self, on_off):
         # Control Dynamixel Torque
-        return self._write_dxl(1,
-                               self.ADDR_TORQUE_ENABLE,
-                               on_off)
+        return self._write_dxl(self.TORQUE_ENABLE, on_off)
 
     def torque_on(self):
         # Enable Dynamixel Torque
@@ -113,10 +122,10 @@ class CraneX7Joint(object):
             self.prof_vel = 20
         else:
             # joint settings
-            self.pgain = 100
+            self.pgain = 80
             self.igain = 20
-            self.prof_acc = 10
-            self.prof_vel = 20
+            self.prof_acc = 5
+            self.prof_vel = 15
 
     def torque_off(self):
         # Disable Dynamixel Torque
@@ -133,7 +142,7 @@ class CraneX7Joint(object):
         else:
             # Write goal position
             logging.info("joint[" + str(self._name) + "] move: " + str(p))
-            self._write_dxl(4, self.ADDR_GOAL_POSITION, p)
+            self._write_dxl(self.GOAL_POSITION, p)
             return True
 
     def pos2deg(self, pos):
@@ -145,111 +154,121 @@ class CraneX7Joint(object):
     @property
     def pgain(self):
         # Read position P gain
-        return self._read_dxl(2, self.ADDR_POSITION_PGAIN)
+        return self._read_dxl(self.POSITION_PGAIN)
 
     @pgain.setter
     def pgain(self, val):
         # Write position P gain
-        self._write_dxl(2, self.ADDR_POSITION_PGAIN, val)
+        self._write_dxl(self.POSITION_PGAIN, val)
 
     @property
     def igain(self):
         # Read position I gain
-        return self._read_dxl(2, self.ADDR_POSITION_IGAIN)
+        return self._read_dxl(self.POSITION_IGAIN)
 
     @igain.setter
     def igain(self, val):
         # Write position I gain
-        self._write_dxl(2, self.ADDR_POSITION_IGAIN, val)
+        self._write_dxl(self.POSITION_IGAIN, val)
 
     @property
     def prof_acc(self):
         # Read acc profile
-        return self._read_dxl(4, self.ADDR_PROFILE_ACCELERATION)
+        return self._read_dxl(self.PROFILE_ACCELERATION)
 
     @prof_acc.setter
     def prof_acc(self, acc):
         # Write acc profile
         # 0-40 (unit=214.577[rev/min2])
-        self._write_dxl(4, self.ADDR_PROFILE_ACCELERATION, acc)
+        self._write_dxl(self.PROFILE_ACCELERATION, acc)
 
     @property
     def prof_vel(self):
         # Read velocity profile
-        return self._read_dxl(4, self.ADDR_PROFILE_VELOCITY)
+        return self._read_dxl(self.PROFILE_VELOCITY)
 
     @prof_vel.setter
     def prof_vel(self, vel):
         # Write velocity profile
         # 0-44 (unit=0.229[RPM])
-        self._write_dxl(4, self.ADDR_PROFILE_ACCELERATION, vel)
+        self._write_dxl(self.PROFILE_ACCELERATION, vel)
 
     @property
     def pos(self):
         # Read present position
-        self._pos = self._read_dxl(4, self.ADDR_PRESENT_POSITION)
+        self._pos = self._read_dxl(self.PRESENT_POSITION)
         self._get_dxl_result()
         return self._pos
 
     @property
     def pos_in_deg(self):
         # Read present position
-        self._pos = self._read_dxl(4, self.ADDR_PRESENT_POSITION)
+        self._pos = self._read_dxl(self.PRESENT_POSITION)
         self._get_dxl_result()
         return self.pos2deg(self._pos)
 
     @property
     def vel(self):
         # Read present velocity
-        self._vel = self._read_dxl(4, self.ADDR_PRESENT_VELOCITY)
+        self._vel = self._read_dxl(self.PRESENT_VELOCITY)
         self._get_dxl_result()
         return self._vel
 
     @property
     def cur(self):
         # Read present current
-        self._cur = self._read_dxl(2, self.ADDR_PRESENT_CURRENT)
+        self._cur = self._read_dxl(self.PRESENT_CURRENT)
         self._get_dxl_result()
         return self._cur
 
     @property
     def tmp(self):
         # Read present temperature
-        self._tmp = self._read_dxl(1, self.ADDR_PRESENT_TEMPERATURE)
+        self._tmp = self._read_dxl(self.PRESENT_TEMPERATURE)
         self._get_dxl_result()
         return self._tmp
 
     @property
     def moving(self):
         # Read moving
-        self._moving = self._read_dxl(1, self.ADDR_MOVING)
+        self._moving = self._read_dxl(self.MOVING)
         self._get_dxl_result()
         return self._moving
 
     @property
+    def err(self):
+        # Read hardware error status
+        self._tmp = self._read_dxl(self.HARDWARE_ERROR_STATUS)
+        self._get_dxl_result()
+        return self._tmp
+
+    @property
     def max_pos(self):
         # Read max position limit
-        return self._read_dxl(4, self.ADDR_MAX_POSITION_LIMIT)
+        return self._read_dxl(self.MAX_POSITION_LIMIT)
 
     @property
     def min_pos(self):
         # Read min position limit
-        return self._read_dxl(4, self.ADDR_MIN_POSITION_LIMIT)
+        return self._read_dxl(self.MIN_POSITION_LIMIT)
 
     @property
     def max_pos_in_deg(self):
         # Read max position limit
-        return self.pos2deg(self._read_dxl(4, self.ADDR_MAX_POSITION_LIMIT))
+        return self.pos2deg(self._read_dxl(self.MAX_POSITION_LIMIT))
 
     @property
     def min_pos_in_deg(self):
         # Read min position limit
-        return self.pos2deg(self._read_dxl(4, self.ADDR_MIN_POSITION_LIMIT))
+        return self.pos2deg(self._read_dxl(self.MIN_POSITION_LIMIT))
 
 
 class CraneX7(object):
     # move end threshold in degree
     MOVE_THRESHOLD = 3
+
+    # move offset for open/close gripper in degree
+    GRIPPER_OFFSET = 5
 
     def __init__(self, device="/dev/ttyUSB0".encode('utf-8'),
                  baudrate=3000000):
@@ -261,8 +280,37 @@ class CraneX7(object):
         self.j = None
         self.hand = None
         self._lock = threading.Lock()
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        self._is_opened = False
+
+        self._pos = None
+        self._pos_hand = None
+        self._vel = None
+        self._cur = None
+        self._tmp = None
+        self._moving = None
+        self._err = None
+
+        # home position as 0
+        self._home_pos_joints = [0 for x in range(7)]
+
+    def loop_thread(self):
+        self._loop.call_soon(self._open)
+        self._loop.call_later(0.01, self._status_updater, self._loop)
+        self._loop.run_forever()
 
     def open(self):
+        if self._port:
+            # already opened
+            return True
+
+        self._thread = threading.Thread(target=self.loop_thread)
+        self._thread.setDaemon(True)
+        self._thread.start()
+        return True
+
+    def _open(self):
         try:
             self._port = dxl.portHandler(self._device)
             dxl.packetHandler()
@@ -298,9 +346,20 @@ class CraneX7(object):
             j.torque_on()
         self.hand.torque_on()
 
+        # get gripper piosition (offsets to prevent crash)
+        self._close_pos_hand = self.hand.min_pos_in_deg + self.GRIPPER_OFFSET
+        self._open_pos_hand = self.hand.max_pos_in_deg - self.GRIPPER_OFFSET
+
+        self._is_opened = True
+
         return True
 
     def close(self):
+        self._loop.call_soon(self._close)
+        self._loop.stop()
+        return True
+
+    def _close(self):
         if self.j:
             for j in self.j:
                 j.torque_off()
@@ -317,6 +376,7 @@ class CraneX7(object):
             dxl.closePort(self._port)
             self._port = None
 
+        self._is_opened = False
         return True
 
     def _wait_for_reach_joints(self, goals, count=20):
@@ -324,20 +384,22 @@ class CraneX7(object):
         for i in range(count):
             match = 0
             for i, j in enumerate(self.j):
-                if abs(goals[i] - j.pos_in_deg) < self.MOVE_THRESHOLD:
+                if abs(goals[i] - self._pos[i]) < self.MOVE_THRESHOLD:
                     match += 1
                     if match == 7:
                         logging.info("Reach goal position")
                         return True
+                time.sleep(0.01)
         logging.warn("timeout: not yet reach goal position " + str(self.pos))
         return False
 
     def _wait_for_reach_hand(self, goal, count=150):
         # wait until reach goal or timeout (expire count)
         for i in range(count):
-            if abs(goal - self.hand.pos_in_deg) < self.MOVE_THRESHOLD:
+            if abs(goal - self._pos_hand) < self.MOVE_THRESHOLD:
                 logging.info("Reach goal position")
                 return True
+            time.sleep(0.01)
         logging.warn("timeout: not yet reach goal position " + str(self.hand.pos_in_deg))
         return False
 
@@ -346,16 +408,18 @@ class CraneX7(object):
         if not self.j:
             logging.error("move home: not yet initialized")
             return False
-        # home position as 0
-        pos = [0 for x in range(7)]
+        self._loop.call_soon(self._home)
+        if sync:
+            # wait until reach goal or timeout (expire count)
+            self._wait_for_reach_joints(self._home_pos_joints, count=100)
+        return True
+
+    def _home(self):
         with self._lock:
             for i, j in enumerate(self.j):
-                if not j.move(pos[i]):
+                if not j.move(self._home_pos_joints[i]):
                     logging.error("move j[" + str(i) + "]: cannot move")
                     return False
-            if sync:
-                # wait until reach goal or timeout (expire count)
-                self._wait_for_reach_joints(pos, count=100)
         return True
 
     def movej(self, pos, sync=False):
@@ -363,14 +427,18 @@ class CraneX7(object):
         if not self.j:
             logging.error("movej: not yet initialized")
             return False
+        self._loop.call_soon(self._movej, pos)
+        if sync:
+            # wait until reach goal or timeout (expire count)
+            self._wait_for_reach_joints(pos)
+        return True
+
+    def _movej(self, pos):
         with self._lock:
             for i, j in enumerate(self.j):
                 if not j.move(pos[i]):
                     logging.error("move j[" + str(i) + "]: cannot move")
                     return False
-            if sync:
-                # wait until reach goal or timeout (expire count)
-                self._wait_for_reach_joints(pos)
         return True
 
     def open_gripper(self, sync=False):
@@ -378,12 +446,15 @@ class CraneX7(object):
         if not self.hand:
             logging.error("gripper: not yet initialized")
             return False
-        open_pos = self.hand.max_pos_in_deg - 5
+        self._loop.call_soon(self._open_gripper, sync)
+        if sync:
+            # wait until reach goal or timeout (expire count)
+            self._wait_for_reach_hand(self._open_pos_hand)
+        return True
+
+    def _open_gripper(self, sync=False):
         with self._lock:
-            self.hand.move(open_pos)
-            if sync:
-                # wait until reach goal or timeout (expire count)
-                self._wait_for_reach_hand(open_pos)
+            self.hand.move(self._open_pos_hand)
         return True
 
     def close_gripper(self, sync=False):
@@ -391,59 +462,92 @@ class CraneX7(object):
         if not self.hand:
             logging.error("gripper: not yet initialized")
             return False
-        close_pos = self.hand.min_pos_in_deg + 5
-        with self._lock:
-            self.hand.move(close_pos)
-            if sync:
-                # wait until reach goal or timeout (expire count)
-                self._wait_for_reach_hand(close_pos)
+        self._loop.call_soon(self._close_gripper)
+        if sync:
+            # wait until reach goal or timeout (expire count)
+            self._wait_for_reach_hand(self._close_pos_hand)
         return True
+
+    def _close_gripper(self):
+        with self._lock:
+            self.hand.move(self._close_pos_hand)
+        return True
+
+    def _status_updater(self, loop):
+        if not self.j:
+            return
+
+        pos = list()
+        with self._lock:
+            for j in self.j:
+                pos.append(j.pos_in_deg)
+        self._pos = pos
+
+        with self._lock:
+            self._pos_hand = self.hand.pos_in_deg
+
+        vel = list()
+        with self._lock:
+            for j in self.j:
+                vel.append(j.vel)
+        self._vel = vel
+
+        cur = list()
+        with self._lock:
+            for j in self.j:
+                cur.append(j.cur)
+        self._cur = cur
+
+        tmp = list()
+        with self._lock:
+            for j in self.j:
+                tmp.append(j.tmp)
+        self._tmp = tmp
+
+        moving = False
+        with self._lock:
+            for j in self.j:
+                moving &= j.moving
+        if moving:
+            self._moving = True
+        else:
+            self._moving = False
+
+        err = 0
+        with self._lock:
+            for j in self.j:
+                err |= j.err
+        self._err = err
+
+        loop.call_later(0.01, self._status_updater, loop)
 
     @property
     def pos(self):
-        if not self.j:
-            return None
-        self._pos = list()
-        for j in self.j:
-            self._pos.append(j.pos_in_deg)
         return self._pos
 
     @property
     def vel(self):
-        if not self.j:
-            return None
-        self._vel = list()
-        for j in self.j:
-            self._vel.append(j.vel)
         return self._vel
 
     @property
     def cur(self):
-        if not self.j:
-            return None
-        self._cur = list()
-        for j in self.j:
-            self._cur.append(j.cur)
         return self._cur
 
     @property
     def tmp(self):
-        if not self.j:
-            return None
-        self._tmp = list()
-        for j in self.j:
-            self._tmp.append(j.tmp)
         return self._tmp
 
     @property
     def moving(self):
-        if not self.j:
-            return None
-        for j in self.j:
-            if j.moving:
-                return True
-        return False
+        return self._moving
 
+    @property
+    def err(self):
+        return self._err
+
+    @property
+    def is_opened(self):
+        return self._is_opened
 
 if __name__ == '__main__':
     c = CraneX7()
