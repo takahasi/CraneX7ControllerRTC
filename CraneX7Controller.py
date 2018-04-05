@@ -20,6 +20,7 @@ class ControlTable():
 
 class CraneX7Joint(object):
     # Control table address (Dynamixel-MX430/540)
+    VELOCITY_LIMIT = ControlTable(44, 4)
     MAX_POSITION_LIMIT = ControlTable(48, 4)
     MIN_POSITION_LIMIT = ControlTable(52, 4)
     TORQUE_ENABLE = ControlTable(64, 1)
@@ -50,6 +51,10 @@ class CraneX7Joint(object):
         self._vel = 0
         self._tmp = 0
         self._err = 0
+
+        self._vlimit = self.vel_limit
+        self._max_pos = self.max_pos
+        self._min_pos = self.min_pos
 
     def _get_dxl_result(self):
         COMM_SUCCESS = 0
@@ -122,10 +127,10 @@ class CraneX7Joint(object):
             self.prof_vel = 20
         else:
             # joint settings
-            self.pgain = 80
+            self.pgain = 150
             self.igain = 20
-            self.prof_acc = 5
-            self.prof_vel = 15
+            self.prof_acc = 50
+            self.prof_vel = 200
 
     def torque_off(self):
         # Disable Dynamixel Torque
@@ -150,6 +155,16 @@ class CraneX7Joint(object):
 
     def deg2pos(self, deg):
         return int((deg + 180.0) / (360.0 / 4096.0))
+
+    @property
+    def torque(self):
+        # Read torque on/off
+        return self._read_dxl(self.TORQUE_ENABLE)
+
+    @property
+    def vel_limit(self):
+        # Read velocity limit
+        return self._read_dxl(self.VELOCITY_LIMIT)
 
     @property
     def pgain(self):
@@ -291,9 +306,13 @@ class CraneX7(object):
         self._tmp = None
         self._moving = None
         self._err = None
+        self._all_prof_vel = None
+        self._torque_enable = None
 
         # home position as 0
         self._home_pos_joints = [0 for x in range(7)]
+
+        self._pause = False
 
     def loop_thread(self):
         self._loop.call_soon(self._open)
@@ -427,6 +446,9 @@ class CraneX7(object):
         if not self.j:
             logging.error("movej: not yet initialized")
             return False
+        if self._pause is True:
+            logging.error("movej: now state is pause")
+            return False
         self._loop.call_soon(self._movej, pos)
         if sync:
             # wait until reach goal or timeout (expire count)
@@ -473,6 +495,69 @@ class CraneX7(object):
             self.hand.move(self._close_pos_hand)
         return True
 
+    def move_gripper(self, ratio=0, sync=False):
+        logging.info("move gripper: sync=" + str(sync))
+        if not self.hand:
+            logging.error("gripper: not yet initialized")
+            return False
+
+        pos = self._open_pos_hand * ratio / 100.0
+
+        self._loop.call_soon(self._move_gripper, pos)
+        if sync:
+            # wait until reach goal or timeout (expire count)
+            self._wait_for_reach_hand(pos)
+        return True
+
+    def _move_gripper(self, pos=0):
+        with self._lock:
+            self.hand.move(pos)
+        return True
+
+    def servo_on(self):
+        logging.info("servo on")
+        if not self.j:
+            logging.error("joint: not yet initialized")
+            return False
+        self._loop.call_soon(self._servo_on)
+        return True
+
+    def _servo_on(self):
+        with self._lock:
+            for i, j in enumerate(self.j):
+                if not j._torque(1):
+                    return False
+            return True
+
+    def servo_off(self):
+        logging.info("servo off")
+        if not self.j:
+            logging.error("joint: not yet initialized")
+            return False
+        self._loop.call_soon(self._servo_off)
+        return True
+
+    def _servo_off(self):
+        with self._lock:
+            for i, j in enumerate(self.j):
+                if not j._torque(0):
+                    return False
+            return True
+
+    def set_prof_vel(self, ratio):
+        logging.info("call set_prof_vel")
+        if not self.j:
+            logging.error("set_prof_vel: not yet initialized")
+            return False
+        self._loop.call_soon(self._set_prof_vel, ratio)
+        return True
+
+    def _set_prof_vel(self, ratio):
+        with self._lock:
+            for i, j in enumerate(self.j):
+                j.prof_vel = int(j._vlimit * ratio / 100.0)
+        return True
+
     def _status_updater(self, loop):
         if not self.j:
             return
@@ -507,7 +592,7 @@ class CraneX7(object):
         moving = False
         with self._lock:
             for j in self.j:
-                moving &= j.moving
+                moving |= j.moving
         if moving:
             self._moving = True
         else:
@@ -518,6 +603,18 @@ class CraneX7(object):
             for j in self.j:
                 err |= j.err
         self._err = err
+
+        prof_vel = list()
+        with self._lock:
+            for j in self.j:
+                prof_vel.append(j.prof_vel)
+        self._all_prof_vel = prof_vel
+
+        torque_enable = list()
+        with self._lock:
+            for j in self.j:
+                torque_enable.append(j.torque)
+        self._torque_enable = torque_enable
 
         loop.call_later(0.01, self._status_updater, loop)
 
@@ -548,6 +645,18 @@ class CraneX7(object):
     @property
     def is_opened(self):
         return self._is_opened
+
+    @property
+    def all_prof_vel(self):
+        return self._all_prof_vel
+
+    @property
+    def pause(self):
+        return self._pause
+
+    @pause.setter
+    def pause(self, boolean):
+        self._pause = boolean
 
 if __name__ == '__main__':
     c = CraneX7()

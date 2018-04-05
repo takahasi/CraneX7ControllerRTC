@@ -15,6 +15,9 @@ from omniORB import CORBA, PortableServer
 import JARA_ARM
 import JARA_ARM__POA
 
+import ManipulatorCommonInterface_DataTypes_idl as DATATYPES_IDL
+import ManipulatorCommonInterface_Common_idl as COMMON_IDL
+import math
 
 class ManipulatorCommonInterface_Middle_i (JARA_ARM__POA.ManipulatorCommonInterface_Middle):
     """
@@ -28,6 +31,13 @@ class ManipulatorCommonInterface_Middle_i (JARA_ARM__POA.ManipulatorCommonInterf
         Initialise member variables here
         """
         self._robot = None
+        self._common = None
+        self._home = [0.0 for i in range(7)]
+
+        self.MIDDLE_IDL_STATE_NORMAL = 0
+        self.MIDDLE_IDL_STATE_PAUSE = 1
+        self.MIDDLE_IDL_STATE_STOP = 2
+        self._middle_idl_state = self.MIDDLE_IDL_STATE_NORMAL
         pass
 
     def set_robot(self, robot):
@@ -36,11 +46,22 @@ class ManipulatorCommonInterface_Middle_i (JARA_ARM__POA.ManipulatorCommonInterf
     def unset_robot(self):
         self._robot = None
 
+    def set_common(self, common):
+        self._common = common
+
+    def unset_common(self):
+        self._common = None
+
     # RETURN_ID closeGripper()
     def closeGripper(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._robot:
+            ret = self._robot.close_gripper()
+            if ret is True:
+                return DATATYPES_IDL.make_return_id('OK', '')
+            else:
+                return DATATYPES_IDL.make_return_id('NG', '')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
     # RETURN_ID getBaseOffset(out HgMatrix offset)
     def getBaseOffset(self):
@@ -62,9 +83,13 @@ class ManipulatorCommonInterface_Middle_i (JARA_ARM__POA.ManipulatorCommonInterf
 
     # RETURN_ID getMaxSpeedJoint(out DoubleSeq speed)
     def getMaxSpeedJoint(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result, speed
+        max_speed = []
+        if self._robot:
+            for j in self._robot.j:
+                max_speed.append(j._vlimit)
+            return DATATYPES_IDL.make_return_id('OK', ''), max_speed
+        else:
+            return DATATYPES_IDL.make_return_id('NG', ''), max_speed
 
     # RETURN_ID getMinAccelTimeCartesian(out double aclTime)
     def getMinAccelTimeCartesian(self):
@@ -86,9 +111,14 @@ class ManipulatorCommonInterface_Middle_i (JARA_ARM__POA.ManipulatorCommonInterf
 
     # RETURN_ID moveGripper(in ULONG angleRatio)
     def moveGripper(self, angleRatio):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._robot:
+            ret = self._robot.move_gripper(angleRatio)
+            if ret is True:
+                return DATATYPES_IDL.make_return_id('OK', '')
+            else:
+                return DATATYPES_IDL.make_return_id('NG', '')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
     # RETURN_ID moveLinearCartesianAbs(in CarPosWithElbow carPoint)
     def moveLinearCartesianAbs(self, carPoint):
@@ -116,39 +146,90 @@ class ManipulatorCommonInterface_Middle_i (JARA_ARM__POA.ManipulatorCommonInterf
 
     # RETURN_ID movePTPJointAbs(in JointPos jointPoints)
     def movePTPJointAbs(self, jointPoints):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._robot:
+            ret = self._robot.movej(jointPoints)
+            if ret is True:
+                return DATATYPES_IDL.make_return_id('OK', '')
+            else:
+                return DATATYPES_IDL.make_return_id('NG', 'invalid value')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
     # RETURN_ID movePTPJointRel(in JointPos jointPoints)
     def movePTPJointRel(self, jointPoints):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._robot:
+            return DATATYPES_IDL.make_return_id('OK', '')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
     # RETURN_ID openGripper()
     def openGripper(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._robot:
+            ret = self._robot.open_gripper()
+            if ret is True:
+                return DATATYPES_IDL.make_return_id('OK', '')
+            else:
+                return DATATYPES_IDL.make_return_id('NG', '')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
     # RETURN_ID pause()
     def pause(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._middle_idl_state > 0:
+            msg = 'robot is already pause or stop'
+            return DATATYPES_IDL.make_return_id('OK', msg)
+
+        if self._common:
+            __, state = self._common.getState()
+
+            if state & 0x01 == 0x00:
+                return DATATYPES_IDL.make_return_id('NOT_SV_ON_ERR',
+                                                    'Now Servo OFF')
+            if state & 0x04 == 0x04:
+                return DATATYPES_IDL.make_return_id('STATUS_ERROR',
+                                                    'Now Alarm Occur')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
+
+        if self._robot:
+            # update state for robot
+            self._robot.pause = True
+            # update state
+            self._middle_idl_state = self.MIDDLE_IDL_STATE_PAUSE
+            return DATATYPES_IDL.make_return_id('OK', '')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
     # RETURN_ID resume()
     def resume(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._robot and \
+           self._middle_idl_state == self.MIDDLE_IDL_STATE_PAUSE:
+            self._robot.pause = False
+            self._middle_idl_state = self.MIDDLE_IDL_STATE_NORMAL
+            return DATATYPES_IDL.make_return_id('OK', '')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
     # RETURN_ID stop()
     def stop(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._common:
+            __, state = self._common.getState()
+
+            if state & 0x01 == 0x00:
+                return DATATYPES_IDL.make_return_id('NOT_SV_ON_ERR',
+                                                    'Now Servo OFF')
+            if state & 0x04 == 0x04:
+                return DATATYPES_IDL.make_return_id('STATUS_ERROR',
+                                                    'Now Alarm Occur')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
+
+        if self._robot:
+            self._robot.pause = False
+            self._middle_idl_state = self.MIDDLE_IDL_STATE_NORMAL
+            return DATATYPES_IDL.make_return_id('OK', '')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
     # RETURN_ID setAccelTimeCartesian(in double aclTime)
     def setAccelTimeCartesian(self, aclTime):
@@ -212,9 +293,11 @@ class ManipulatorCommonInterface_Middle_i (JARA_ARM__POA.ManipulatorCommonInterf
 
     # RETURN_ID setSpeedJoint(in ULONG spdRatio)
     def setSpeedJoint(self, spdRatio):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._robot:
+            self._robot.set_prof_vel(spdRatio)
+            return DATATYPES_IDL.make_return_id('OK', '')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
     # RETURN_ID moveCircularCartesianAbs(in CarPosWithElbow carPointR, in CarPosWithElbow carPointT)
     def moveCircularCartesianAbs(self, carPointR, carPointT):
@@ -230,21 +313,23 @@ class ManipulatorCommonInterface_Middle_i (JARA_ARM__POA.ManipulatorCommonInterf
 
     # RETURN_ID setHome(in JointPos jointPoint)
     def setHome(self, jointPoint):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        self._home = jointPoint
+        return DATATYPES_IDL.make_return_id('OK', '')
 
     # RETURN_ID getHome(out JointPos jointPoint)
     def getHome(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result, jointPoint
+        return DATATYPES_IDL.make_return_id('OK', ''), self._home
 
     # RETURN_ID goHome()
     def goHome(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._robot:
+            ret = self._robot.movej(self._home)
+            if ret is True:
+                return DATATYPES_IDL.make_return_id('OK', '')
+            else:
+                return DATATYPES_IDL.make_return_id('NG', '')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
 
 if __name__ == "__main__":
