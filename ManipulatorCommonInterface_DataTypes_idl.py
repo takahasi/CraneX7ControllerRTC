@@ -107,6 +107,27 @@ _0_JARA_ARM._tc_ULONG = omniORB.tcInternal.createTypeCode(_0_JARA_ARM._ad_ULONG)
 omniORB.registerType(ULONG._NP_RepositoryId, _0_JARA_ARM._ad_ULONG, _0_JARA_ARM._tc_ULONG)
 del ULONG
 
+def make_return_id(ret_id, comment):
+
+    if ret_id == "OK":
+        ret = _0_JARA_ARM.OK
+    elif ret_id == "NG":
+        ret = _0_JARA_ARM.NG
+    elif ret_id == "STATUS_ERR":
+        ret = _0_JARA_ARM.STATUS_ERR
+    elif ret_id == "VALUE_ERR":
+        ret = _0_JARA_ARM.VALUE_ERR
+    elif ret_id == "NOT_SV_ON_ERR":
+        ret = _0_JARA_ARM.NOT_SV_ON_ERR
+    elif ret_id == "FULL_MOTION_QUEUE_ERR":
+        ret = _0_JARA_ARM.FULL_MOTIAON_QUEUE_ERR
+    elif ret_id == "NOT_IMPLEMENTED":
+        ret = _0_JARA_ARM.NOT_IMPLEMENTED
+    else:
+        ret = ret_id
+
+    return _0_JARA_ARM.RETURN_ID(ret, comment)
+
 #
 # End of module "JARA_ARM"
 #

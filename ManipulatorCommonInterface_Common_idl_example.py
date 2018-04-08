@@ -15,6 +15,8 @@ from omniORB import CORBA, PortableServer
 import JARA_ARM
 import JARA_ARM__POA
 
+import ManipulatorCommonInterface_DataTypes_idl as DATATYPES_IDL
+import ManipulatorCommonInterface_Common_idl as COMMON_IDL
 
 class ManipulatorCommonInterface_Common_i (JARA_ARM__POA.ManipulatorCommonInterface_Common):
     """
@@ -28,6 +30,8 @@ class ManipulatorCommonInterface_Common_i (JARA_ARM__POA.ManipulatorCommonInterf
         Initialise member variables here
         """
         self._robot = None
+        self._axisnum = 7
+        self._middle = None
         pass
 
     def set_robot(self, robot):
@@ -35,8 +39,28 @@ class ManipulatorCommonInterface_Common_i (JARA_ARM__POA.ManipulatorCommonInterf
 
     def unset_robot(self):
         self._robot = None
+        
+    def _make_alarm(self, code, alarm_type, alarm_val):
+        if alarm_type == "FAULT":
+            alarm = COMMON_IDL._0_JARA_ARM.FAULT
+        elif alarm_type == "WARNING":
+            alarm = COMMON_IDL._0_JARA_ARM.WARNING
+        else:
+            alarm = COMMON_IDL._0_JARA_ARM.UNKNOWN
 
-    # RETURN_ID clearAlarms()
+        if alarm_val is None:
+            comment = '{:X}'.format(0)
+        else:
+            comment = '{:X}'.format(alarm_val)
+
+        return COMMON_IDL._0_JARA_ARM.Alarm(code, alarm, comment)
+
+    def _make_manipInfo(self, manu, name, num, cycle, isgripper):
+        return COMMON_IDL._0_JARA_ARM.ManipInfo(manu, name, num, cycle, isgripper)
+
+    def _make_limitValue(self, upper, lower):
+        return DATATYPES_IDL._0_JARA_ARM.LimitValue(upper, lower)
+
     # RETURN_ID clearAlarms()
     def clearAlarms(self):
         raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
@@ -45,45 +69,84 @@ class ManipulatorCommonInterface_Common_i (JARA_ARM__POA.ManipulatorCommonInterf
 
     # RETURN_ID getActiveAlarm(out AlarmSeq alarms)
     def getActiveAlarm(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result, alarms
+        if self._robot:
+            return DATATYPES_IDL.make_return_id('OK', ''),\
+                [self._make_alarm(0xFFFFFFFF, 'WARNING', self._robot.err)]
+        else:
+            return DATATYPES_IDL.make_return_id('NG', ''), []
 
     # RETURN_ID getFeedbackPosJoint(out JointPos pos)
     def getFeedbackPosJoint(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result, pos
+        if self._robot:
+            return DATATYPES_IDL.make_return_id('OK', ''), self._robot.pos
+        else:
+            return DATATYEPS_IDL.make_return_id('NG', ''), []
 
     # RETURN_ID getManipInfo(out ManipInfo mInfo)
     def getManipInfo(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result, mInfo
+        return DATATYPES_IDL.make_return_id('OK', ''),\
+            self._make_manipInfo('RT CORPORATION',
+                                 'Crane-X7',
+                                 self._axisnum,
+                                 1,
+                                 True)
 
     # RETURN_ID getSoftLimitJoint(out LimitSeq softLimit)
     def getSoftLimitJoint(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result, softLimit
+        limit = []
+        if self._robot and self._robot.j:
+            for j in self._robot.j:
+                limit.append(self._make_limitValue(j._max_pos, j._min_pos))
+            return DATATYPES_IDL.make_return_id('OK', ''), limit
+        else:
+            return DATATYPES_IDL.make_return_id('NG', ''), limit
 
     # RETURN_ID getState(out ULONG state)
     def getState(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result, state
+        if self._robot:
+            state = 0x01
+            # check toruqe enable
+            for i in self._robot._torque_enable:
+                if i is False:
+                    state = 0x00
+                    break
+            # check moving
+            if self._robot._moving:
+                state |= 0x02
+
+            # check alarm
+            if self._robot._err != 0:
+                state |= 0x04
+
+            # buffer is not available
+
+            # check pause
+            if self._robot.pause is True:
+                state |= 0x10
+
+            return DATATYPES_IDL.make_return_id('OK', ''), state
+        else:
+            return DATATYPES_IDL.make_return_id('NG', ''), 0
 
     # RETURN_ID servoOFF()
     def servoOFF(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._robot:
+            if self._robot.servo_off():
+                return DATATYPES_IDL.make_return_id('OK', '')
+            else:
+                return DATATYPES_IDL.make_return_id('NG', '')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
     # RETURN_ID servoON()
     def servoON(self):
-        raise CORBA.NO_IMPLEMENT(0, CORBA.COMPLETED_NO)
-        # *** Implement me
-        # Must return: result
+        if self._robot:
+            if self._robot.servo_on():
+                return DATATYPES_IDL.make_return_id('OK', '')
+            else:
+                return DATATYPES_IDL.make_return_id('NG', '')
+        else:
+            return DATATYPES_IDL.make_return_id('NG', '')
 
     # RETURN_ID setSoftLimitJoint(in LimitSeq softLimit)
     def setSoftLimitJoint(self, softLimit):

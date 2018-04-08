@@ -205,6 +205,8 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
             return RTC.RTC_ERROR
 
         self._middle.set_robot(self._robot)
+        self._middle.set_common(self._common)
+
         self._common.set_robot(self._robot)
 
         return RTC.RTC_OK
@@ -229,6 +231,8 @@ class CraneX7ControllerRTC(OpenRTM_aist.DataFlowComponentBase):
                 return RTC.RTC_ERROR
 
         self._middle.unset_robot()
+        self._middle.unset_common()
+
         self._common.unset_robot()
 
         del self._robot
